@@ -26,6 +26,8 @@
   color-scheme:dark;
 }
 [hidden]{display:none!important}
+html,body{touch-action:manipulation}
+.stage,.controls,.opts,.dex,.shop,.levels{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 html,body{background:var(--night);color:var(--hanji)}
 body{font-family:var(--f-body);font-size:15px;line-height:1.6;padding-inline:16px;padding-block:22px 48px}
 .wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px;align-items:start}
@@ -44,8 +46,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(30px,5.6vw,46px)
 .pip.used{background:transparent;border:1.5px dashed var(--line);box-shadow:none}
 
 .stage{background:linear-gradient(180deg,var(--night-3),var(--night-2) 70%);border:1px solid var(--line);border-radius:18px;overflow:hidden}
-#scene{display:block;width:100%;height:auto;touch-action:none;cursor:ew-resize;user-select:none;-webkit-user-select:none}
-#scene:focus-visible{outline:2px solid var(--straw);outline-offset:-4px}
+#scene{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none}
 .below{display:grid;gap:10px;justify-items:center;padding:4px 16px 20px;text-align:center}
 .chant{font-family:var(--f-brush);font-size:clamp(28px,5.4vw,38px);color:var(--straw);line-height:1.2;min-height:1.25em;margin:0}
 .hint{margin:0;color:var(--dim);font-size:13.5px;min-height:1.6em}
@@ -61,8 +62,11 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(30px,5.6vw,46px)
 .opt[disabled]{cursor:default}
 .opt:focus-visible{outline:2px solid var(--straw);outline-offset:2px}
 .controls{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-.btn{font:inherit;font-weight:700;border:0;border-radius:999px;padding:10px 22px;background:var(--straw);color:var(--straw-ink);cursor:pointer}
+.btn{touch-action:manipulation;-webkit-tap-highlight-color:transparent;font:inherit;font-weight:700;border:0;border-radius:999px;padding:10px 22px;background:var(--straw);color:var(--straw-ink);cursor:pointer}
 .btn:hover{filter:brightness(1.08)}
+#sawBtn{font-size:18px;padding:14px 40px;min-width:200px;box-shadow:0 4px 0 #8a6a2a}
+#sawBtn:active:not([disabled]){transform:translateY(3px);box-shadow:0 1px 0 #8a6a2a}
+.opt,.buy,.lv,.cell{touch-action:manipulation}
 .btn.ghost{background:transparent;color:var(--hanji);border:1px solid var(--line);font-weight:400}
 .btn:focus-visible{outline:2px solid var(--straw);outline-offset:2px}
 .btn[disabled]{opacity:.45;cursor:default;filter:none}
@@ -153,7 +157,7 @@ details.tools .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
   </header>
 
   <section class="stage" aria-label="박타기 무대">
-    <svg id="scene" viewBox="0 0 400 420" tabindex="0" role="img" aria-label="지붕 위의 박. 박 위를 좌우로 문지르거나 좌우 화살표 키로 톱질하면 한자가 한 획씩 써져요.">
+    <svg id="scene" viewBox="0 0 400 420" role="img" aria-label="지붕 위의 박. 톱질 한 번 단추를 누를 때마다 박 위에 한자가 한 획씩 써져요.">
       <defs>
         <radialGradient id="gGourd" cx="38%" cy="32%" r="72%">
           <stop offset="0" stop-color="#f8faee"/><stop offset=".55" stop-color="#e2e8cc"/><stop offset="1" stop-color="#9eaa80"/>
@@ -208,7 +212,7 @@ details.tools .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
 
     <div class="below">
       <p class="chant" id="chant">슬근슬근 톱질이야</p>
-      <p class="hint" id="hint">박 위를 좌우로 문질러 톱질하세요.</p>
+      <p class="hint" id="hint">아래 톱질 단추를 눌러 보세요.</p>
       <div class="meter" aria-hidden="true"><span id="meter"></span></div>
       <div class="quiz" id="quiz" hidden>
         <p class="quiz-q" id="quizQ">무슨 글자일까요? 일찍 맞힐수록 엽전이 많아요.</p>
@@ -438,19 +442,33 @@ function guide(parent, ch, x, y, size){
 
 /* ---------- sound ---------- */
 let ac=null, soundOn=true;
-function audioInit(){if(ac||!soundOn)return;try{ac=new (window.AudioContext||window.webkitAudioContext)();}catch(e){ac=null;}}
+try{if(localStorage.getItem('heungbu-sound')==='off')soundOn=false;}catch(e){}
+let master=null;
+function audioInit(){
+  if(!soundOn)return;
+  if(!ac){
+    try{
+      ac=new (window.AudioContext||window.webkitAudioContext)();
+      master=ac.createGain(); master.gain.value=1;
+      master.connect(ac.destination);
+      const b=ac.createBuffer(1,1,22050), src=ac.createBufferSource(); src.buffer=b; src.connect(ac.destination); src.start(0);
+    }catch(e){ac=null;master=null;return;}
+  }
+  if(ac.state!=='running'){try{ac.resume();}catch(e){}}
+}
+['touchend','click'].forEach(t=>document.addEventListener(t,audioInit,{passive:true}));
 function sawSound(){
   if(!ac||!soundOn)return;
   try{const len=Math.floor(ac.sampleRate*.13),buf=ac.createBuffer(1,len,ac.sampleRate),dt=buf.getChannelData(0);
     for(let i=0;i<len;i++){dt[i]=(Math.random()*2-1)*Math.sin(Math.PI*i/len)*(.6+.4*Math.sin(i/9));}
     const src=ac.createBufferSource();src.buffer=buf;const f=ac.createBiquadFilter();f.type='bandpass';f.frequency.value=1800+Math.random()*900;f.Q.value=1.4;
-    const g=ac.createGain();g.gain.value=.35;src.connect(f).connect(g).connect(ac.destination);src.start();}catch(e){}
+    const g=ac.createGain();g.gain.value=.35;src.connect(f).connect(g).connect(master);src.start();}catch(e){}
 }
 function tones(list,type){
   if(!ac||!soundOn)return;
   try{const now=ac.currentTime;list.forEach((fq,i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type=type||'sine';o.frequency.value=fq;
     const t0=now+i*.11;g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(.18,t0+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+.7);
-    o.connect(g).connect(ac.destination);o.start(t0);o.stop(t0+.75);});}catch(e){}
+    o.connect(g).connect(master);o.start(t0);o.stop(t0+.75);});}catch(e){}
 }
 
 /* ---------- game state ---------- */
@@ -543,7 +561,7 @@ function newGourd(){
   cur=pick(); opening=false;
   glyph=makeGlyph(ink,cur.ch,122,160,156,'#1c1a17');
   $('chant').textContent='슬근슬근 톱질이야';
-  $('hint').textContent=`이번 박은 ${cur.n}획짜리 글자예요. 좌우로 문질러 톱질하세요.`;
+  $('hint').textContent=`이번 박은 ${cur.n}획짜리 글자예요. 톱질 단추를 눌러 보세요.`;
   $('sawBtn').hidden=false;$('sawBtn').disabled=false;$('nextBtn').hidden=true;
   render();
 }
@@ -652,23 +670,12 @@ $('levels').addEventListener('click',e=>{
 
 
 /* ---------- input ---------- */
-let dragging=false,lastX=0,dir=0,travel=0;
-function svgX(e){const r=scene.getBoundingClientRect();return (e.clientX-r.left)/r.width*400;}
-scene.addEventListener('pointerdown',e=>{audioInit();if(!canSaw())return;dragging=true;saw.classList.remove('smooth');
-  try{scene.setPointerCapture(e.pointerId);}catch(_){}lastX=svgX(e);dir=0;travel=0;});
-scene.addEventListener('pointermove',e=>{if(!dragging)return;const x=svgX(e),dx=x-lastX;lastX=x;
-  if(!canSaw()){dragging=false;return;}
-  sawOff=Math.max(-70,Math.min(70,sawOff+dx));placeSaw();
-  const s=Math.sign(dx);if(!s)return;if(dir===0)dir=s;
-  if(s===dir)travel+=Math.abs(dx);else{if(travel>=22)stroke();dir=s;travel=Math.abs(dx);}});
-function endDrag(){if(!dragging)return;dragging=false;if(travel>=22)stroke();travel=0;dir=0;}
-scene.addEventListener('pointerup',endDrag);scene.addEventListener('pointercancel',endDrag);
 function buttonStroke(){audioInit();if(!canSaw())return;saw.classList.add('smooth');sawOff=sawOff>0?-45:45;stroke();}
 $('sawBtn').addEventListener('click',buttonStroke);
-scene.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' ','Enter'].includes(e.key)){e.preventDefault();buttonStroke();}});
 $('nextBtn').addEventListener('click',newGourd);
-$('soundBtn').addEventListener('click',()=>{soundOn=!soundOn;$('soundBtn').textContent=soundOn?'소리 켜짐':'소리 꺼짐';$('soundBtn').setAttribute('aria-pressed',String(soundOn));if(soundOn)audioInit();});
+$('soundBtn').addEventListener('click',()=>{soundOn=!soundOn;try{localStorage.setItem('heungbu-sound',soundOn?'on':'off');}catch(e){}$('soundBtn').textContent=soundOn?'소리 켜짐':'소리 꺼짐';$('soundBtn').setAttribute('aria-pressed',String(soundOn));if(soundOn)audioInit();});
 
+$('soundBtn').textContent=soundOn?'소리 켜짐':'소리 꺼짐';$('soundBtn').setAttribute('aria-pressed',String(soundOn));
 renderLevels();renderDex();renderStats();renderShop();newGourd();
 })();
 </script>

@@ -52,7 +52,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(30px,5.6vw,46px)
 .hint{margin:0;color:var(--dim);font-size:13.5px;min-height:1.6em}
 .meter{width:min(320px,100%);height:6px;border-radius:99px;background:var(--night);overflow:hidden}
 .meter span{display:block;height:100%;width:0;background:var(--straw);transition:width .15s}
-.quiz{display:grid;gap:8px;justify-items:center;width:100%}
+.quiz{display:grid;gap:8px;justify-items:center;width:100%;margin-top:8px;padding-top:14px;border-top:1px dashed var(--line)}
 .quiz-q{margin:0;font-size:14px}
 .opts{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .opt{font:inherit;font-size:16px;padding:8px 16px;border-radius:10px;border:1px solid var(--line);background:var(--night);color:var(--hanji);cursor:pointer;min-width:96px}
@@ -214,14 +214,14 @@ details.tools .row{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
       <p class="chant" id="chant">슬근슬근 톱질이야</p>
       <p class="hint" id="hint">아래 톱질 단추를 눌러 보세요.</p>
       <div class="meter" aria-hidden="true"><span id="meter"></span></div>
-      <div class="quiz" id="quiz" hidden>
-        <p class="quiz-q" id="quizQ">무슨 글자일까요? 일찍 맞힐수록 엽전이 많아요.</p>
-        <div class="opts" id="opts"></div>
-      </div>
       <div class="controls">
         <button class="btn" id="sawBtn" type="button">톱질 한 번</button>
         <button class="btn" id="nextBtn" type="button" hidden>다음 박 타기</button>
         <button class="btn ghost" id="soundBtn" type="button" aria-pressed="true">소리 켜짐</button>
+      </div>
+      <div class="quiz" id="quiz" hidden>
+        <p class="quiz-q" id="quizQ">무슨 글자일까요? 일찍 맞힐수록 엽전이 많아요.</p>
+        <div class="opts" id="opts"></div>
       </div>
     </div>
   </section>
@@ -488,17 +488,32 @@ function render(){
   $('meter').style.width=(progress/need()*100)+'%';
   placeSaw();
 }
-function canSaw(){return cur&&!opening&&state.left>0;}
+let reviewMode=false;
+const REVIEW_CHANTS=['박복한 흥부는 복습을 하네~','슬근슬근 다시 켜세','한 번 본 글자 또 보세'];
+function canSaw(){return cur&&!opening&&(reviewMode||state.left>0);}
+function busySawing(){return cur&&progress>0&&!opening;}
+function startReview(c){
+  if(busySawing())return;
+  resetScene(); reviewMode=true; cur=c; opening=false;
+  glyph=makeGlyph(ink,c.ch,122,160,156,'#1c1a17');
+  $('chant').textContent=REVIEW_CHANTS[0];
+  $('hint').textContent=`복습 박: ${c.ch} ${c.hun}. 톱질 단추로 필순을 따라가 보세요.`;
+  $('sawBtn').hidden=false;$('sawBtn').disabled=false;$('nextBtn').hidden=true;
+  render();
+  try{$('scene').scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});}catch(e){}
+}
 
 function stroke(){
   if(!canSaw())return;
   progress=Math.min(need(),progress+1);
   if(progress<=cur.n) glyph.show(progress-1,true,300);
   render(); sawSound(); dust();
-  $('chant').textContent = progress>cur.n ? '마지막 톱질이야!' : CHANTS[Math.floor((progress-1)/2)%CHANTS.length];
-  if(progress<=cur.n) $('hint').textContent=`${progress}획 / 총 ${cur.n}획`;
+  const ch=reviewMode?REVIEW_CHANTS:CHANTS;
+  $('chant').textContent = progress>cur.n ? '마지막 톱질이야!' : ch[Math.floor((progress-1)/2)%ch.length];
+  const pre=reviewMode?`${cur.ch} ${cur.hun} · `:'';
+  if(progress<=cur.n) $('hint').textContent=`${pre}${progress}획 / 총 ${cur.n}획`;
   else $('hint').textContent='글자가 완성됐어요. 조금만 더 켜면 박이 갈라져요.';
-  if(!quizOpen && answered===null && progress>=Math.ceil(cur.n/2)) openQuiz();
+  if(!reviewMode && !quizOpen && answered===null && progress>=Math.ceil(cur.n/2)) openQuiz();
   if(progress>=need()){opening=true;setTimeout(openGourd,260);}
 }
 function dust(){
@@ -517,8 +532,9 @@ function openQuiz(){
   $('quizQ').textContent='무슨 글자일까요? 일찍 맞힐수록 엽전이 많아요.';
   $('opts').innerHTML='';
   opts.forEach(o=>{const b=document.createElement('button');b.type='button';b.className='opt';b.textContent=o.hun;
-    b.addEventListener('click',()=>answer(o,b));$('opts').appendChild(b);});
+    b.disabled=true;b.addEventListener('click',()=>answer(o,b));$('opts').appendChild(b);});
   $('quiz').hidden=false;
+  setTimeout(()=>{if(answered===null)[...$('opts').children].forEach(b=>{b.disabled=false;});},500);
 }
 function answer(o,btn){
   if(answered!==null)return;
@@ -530,21 +546,34 @@ function answer(o,btn){
   else{earned=0;$('quizQ').textContent=`아쉬워요. 정답은 ${cur.ch} ${cur.hun}. 마저 톱질해서 박을 여세요.`;tones([247,220],'triangle');}
 }
 
-function openGourd(){
-  const c=cur, r=rec(c.ch);
-  if(answered===null){answered=false;earned=0;}
-  r.seen+=1; if(answered) r.right+=1;
-  state.rec[c.ch]=r; state.coins=(state.coins||0)+earned; state.left=Math.max(0,state.left-1); state.used=(state.used||0)+1; state.last=c.ch; save();
+function openVisual(c){
   halfL.classList.add('open');halfR.classList.add('open');ink.classList.add('gone');
   saw.classList.add('gone');stem.classList.add('gone');cut.setAttribute('opacity',0);
   burst.classList.add('on');
   const ri=$('revealInk'); ri.innerHTML=''; makeGlyph(ri,c.ch,152,192,96,'#1c1a17').showAll();
   reveal.classList.add('on');
+  $('quiz').hidden=true; $('sawBtn').hidden=true;
+}
+function openGourd(){
+  const c=cur;
+  if(reviewMode){
+    openVisual(c); tones([523,659,784]);
+    $('chant').textContent='복습 끝, 복 받으세~';
+    $('hint').textContent=`${c.ch} ${c.hun}. 복습 박은 오늘의 박, 엽전, 익힌 횟수에 들어가지 않아요.`;
+    $('nextBtn').textContent= state.left>0 ? '오늘의 박 타기' : '복습 마치기';
+    $('nextBtn').hidden=false;
+    showCard(c,'review');
+    return;
+  }
+  const r=rec(c.ch);
+  if(answered===null){answered=false;earned=0;}
+  r.seen+=1; if(answered) r.right+=1;
+  state.rec[c.ch]=r; state.coins=(state.coins||0)+earned; state.left=Math.max(0,state.left-1); state.used=(state.used||0)+1; state.last=c.ch; save();
+  openVisual(c);
   tones(answered?[523,659,784,1047]:[523,659]);
   $('chant').textContent= answered ? '얼씨구나 좋다!' : '박이 쩍 갈라졌네';
   $('hint').textContent= state.left>0 ? `${c.ch} ${c.hun}. 오늘 남은 박 ${state.left}통` : `${c.ch} ${c.hun}. 오늘의 박을 다 탔어요.`;
-  $('quiz').hidden=true;
-  $('sawBtn').hidden=true; $('nextBtn').hidden=state.left<=0;
+  $('nextBtn').textContent='다음 박 타기'; $('nextBtn').hidden=state.left<=0;
   showCard(c, answered?'ok':'miss'); renderDex(); renderStats(); renderShop(); if(earned)bumpCoins();
   if(status(c.ch)==='mastered' && r.right===3) $('chant').textContent='익힌 글자 도장 쾅!';
 }
@@ -556,7 +585,7 @@ function resetScene(){
   ink.innerHTML=''; sawOff=0; progress=0; answered=null; quizOpen=false; earned=0; $('quiz').hidden=true;
 }
 function newGourd(){
-  resetScene();
+  resetScene(); reviewMode=false; $('nextBtn').textContent='다음 박 타기';
   if(state.left<=0){showSpent();return;}
   cur=pick(); opening=false;
   glyph=makeGlyph(ink,cur.ch,122,160,156,'#1c1a17');
@@ -575,7 +604,7 @@ function showSpent(){
 let replayTimers=[];
 function showCard(c,mode){
   const r=rec(c.ch), st=status(c.ch);
-  const verdict = mode==='ok' ? `<span class="verdict ok">맞힘 · 엽전 ${earned}냥</span>` : mode==='miss' ? `<span class="verdict miss">못 맞힘</span>` : `<span class="verdict view">복습</span>`;
+  const verdict = mode==='ok' ? `<span class="verdict ok">맞힘 · 엽전 ${earned}냥</span>` : mode==='miss' ? `<span class="verdict miss">못 맞힘</span>` : mode==='review' ? `<span class="verdict view">복습 박</span>` : `<span class="verdict view">도감</span>`;
   const stLabel={mastered:'익힌 글자',known:'맞힌 글자',seen:'본 글자',unseen:''}[st];
   $('result').innerHTML=`
     <div class="result">
@@ -586,7 +615,7 @@ function showCard(c,mode){
         <p class="meta">${c.n}획 · 맞힌 횟수 ${r.right}${stLabel?` · ${stLabel}`:''}</p>
         <p class="word"><span class="hj">${c.w}</span> ${c.wr}</p>
       </div>
-      <div class="result-actions"><button class="btn ghost" id="replayBtn" type="button">필순 다시 보기</button></div>
+      <div class="result-actions"><button class="btn ghost" id="replayBtn" type="button">필순 다시 보기</button><button class="btn ghost" id="reviewBtn" type="button">복습 박 타기</button></div>
     </div>`;
   const draw=()=>{
     replayTimers.forEach(clearTimeout);replayTimers=[];
@@ -596,6 +625,9 @@ function showCard(c,mode){
     for(let i=0;i<g.count;i++)replayTimers.push(setTimeout(()=>g.show(i,true,420),i*480+150));
   };
   draw(); $('replayBtn').addEventListener('click',draw);
+  const rb=$('reviewBtn');
+  if(busySawing()){rb.disabled=true;rb.textContent='지금 박을 다 탄 뒤 복습';}
+  rb.addEventListener('click',()=>{audioInit();if(busySawing()){rb.disabled=true;rb.textContent='지금 박을 다 탄 뒤 복습';return;}startReview(c);});
 }
 function renderDex(){
   $('dexTitle').textContent=LV[state.level].label+' 한자 도감';

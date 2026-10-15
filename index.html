@@ -379,6 +379,7 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
 let state=load();
 if(state.day!==todayKey()){state.day=todayKey();state.left=DAILY;state.used=0;save();}
 if(!LV[state.level])state.level='8';
+try{if(location.hash==='#g7'){if(!state.unlocked.includes('7'))state.unlocked.push('7');state.level='7';state.last=null;save();}}catch(e){}
 function rec(ch){return state.rec[ch]||{seen:0,right:0};}
 function status(ch){const r=rec(ch);if(r.right>=3)return 'mastered';if(r.right>=1)return 'known';if(r.seen)return 'seen';return 'unseen';}
 
